@@ -5,6 +5,8 @@ import Html exposing (Html, button, div, h1, h3, img, input, label, text)
 import Html.Attributes exposing (alt, checked, class, classList, id, name, size, src, type_, value)
 import Html.Events exposing (onCheck, onClick)
 import Http
+import Json.Decode
+import Json.Decode.Pipeline exposing (optional, required)
 import Platform.Cmd as Cmd
 import Random
 
@@ -103,7 +105,17 @@ type ThumbnailSize
 
 type alias Photo =
     { url : String
+    , size : Int
+    , title : String
     }
+
+
+photoDecoder : Json.Decode.Decoder Photo
+photoDecoder =
+    Json.Decode.map3 (\url size title -> { url = url, size = size, title = title })
+        (Json.Decode.field "url" Json.Decode.string)
+        (Json.Decode.field "size" Json.Decode.int)
+        (Json.Decode.field "title" Json.Decode.string)
 
 
 type Status
@@ -174,7 +186,7 @@ update msg model =
                         (firstUrl :: _) as urls ->
                             let
                                 photos =
-                                    List.map Photo urls
+                                    List.map (\url -> { url = url, size = 0, title = "" }) urls
                             in
                             ( { model | status = Loaded photos firstUrl }
                             , Cmd.none
