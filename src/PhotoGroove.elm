@@ -2,12 +2,11 @@ module PhotoGroove exposing (main)
 
 import Browser
 import Html exposing (Html, button, div, h1, h3, img, input, label, text)
-import Html.Attributes exposing (alt, checked, class, classList, id, name, size, src, type_, value)
+import Html.Attributes exposing (alt, checked, class, classList, id, name, size, src, title, type_, value)
 import Html.Events exposing (onCheck, onClick)
 import Http
 import Json.Decode
 import Json.Decode.Pipeline exposing (optional, required)
-import Platform.Cmd as Cmd
 import Random
 
 
@@ -21,7 +20,7 @@ type Msg
     | ChoseSize ThumbnailSize
     | ClickedSurpriseMe
     | GotRandomPhoto Photo
-    | GotPhotos (Result Http.Error String)
+    | GotPhotos (Result Http.Error (List Photo))
 
 
 view : Model -> Html Msg
@@ -63,6 +62,7 @@ viewThumbnail selectedUrl thumb =
     img
         [ src (urlPrefix ++ thumb.url)
         , alt "Thumbnail"
+        , title (thumb.title ++ " [" ++ String.fromInt thumb.size ++ " KB]")
         , classList [ ( "selected", selectedUrl == thumb.url ) ]
         , onClick (ClickedPhoto thumb.url)
         ]
@@ -112,10 +112,12 @@ type alias Photo =
 
 photoDecoder : Json.Decode.Decoder Photo
 photoDecoder =
-    Json.Decode.map3 (\url size title -> { url = url, size = size, title = title })
-        (Json.Decode.field "url" Json.Decode.string)
-        (Json.Decode.field "size" Json.Decode.int)
-        (Json.Decode.field "title" Json.Decode.string)
+    -- If decoding succeeds, pass these values to the `buildPhoto` function.
+    Json.Decode.succeed Photo
+        |> required "url" Json.Decode.string
+        |> required "size" Json.Decode.int
+        -- The fallback value will be used if the "title" field is either missing or null.
+        |> optional "title" Json.Decode.string "(untitled)"
 
 
 type Status
@@ -135,14 +137,6 @@ initialModel =
     { status = Loading
     , chosenSize = Medium
     }
-
-
-initialCmd : Cmd Msg
-initialCmd =
-    Http.get
-        { url = urlPrefix ++ "photos/list"
-        , expect = Http.expectString GotPhotos
-        }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -179,28 +173,22 @@ update msg model =
             , Cmd.none
             )
 
-        GotPhotos result ->
-            case result of
-                Ok responseStr ->
-                    case String.split "," responseStr of
-                        (firstUrl :: _) as urls ->
-                            let
-                                photos =
-                                    List.map (\url -> { url = url, size = 0, title = "" }) urls
-                            in
-                            ( { model | status = Loaded photos firstUrl }
-                            , Cmd.none
-                            )
-
-                        [] ->
-                            ( { model | status = Errored "0 photos found" }
-                            , Cmd.none
-                            )
-
-                Err _ ->
-                    ( { model | status = Errored "Server error" }
+        GotPhotos (Ok photos) ->
+            case photos of
+                first :: _ ->
+                    ( { model | status = Loaded photos first.url }
                     , Cmd.none
                     )
+
+                [] ->
+                    ( { model | status = Errored "0 photos found" }
+                    , Cmd.none
+                    )
+
+        GotPhotos (Err _) ->
+            ( { model | status = Errored "Server error!" }
+            , Cmd.none
+            )
 
 
 selectUrl : String -> Status -> Status
@@ -209,8 +197,19 @@ selectUrl url status =
         Loaded photos _ ->
             Loaded photos url
 
-        _ ->
+        Loading ->
             status
+
+        Errored _ ->
+            status
+
+
+initialCmd : Cmd Msg
+initialCmd =
+    Http.get
+        { url = urlPrefix ++ "photos/list.json"
+        , expect = Http.expectJson GotPhotos (Json.Decode.list photoDecoder)
+        }
 
 
 main : Program () Model Msg
