@@ -5,14 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Photo Groove</title>
     <link rel="stylesheet" href="https://elm-in-action.com/styles.css" />
+    <link rel="stylesheet" href="https://elm-in-action.com/range-slider.css" />
+    <script src="https://elm-in-action.com/range-slider.js"></script>
+    <script>
+      class RangeSlider extends HTMLElement {
+        connectedCallback() {
+          const input = document.createElement("input");
+          this.appendChild(input);
+
+          const jsr = new JSR(input, {
+            max: this.max,
+            values: [this.val],
+            sliders: 1,
+            grid: false,
+          });
+
+          const rangeSliderNode = this;
+
+          jsr.addEventListener("update", (element, value) => {
+            const event = new CustomEvent("slide", {
+              detail: {
+                userSlidTo: value,
+              },
+            });
+            rangeSliderNode.dispatchEvent(event);
+          });
+        }
+      }
+
+      window.customElements.define("range-slider", RangeSlider);
+    </script>
   </head>
   <body>
     <div id="app"></div>
 
+    <script src="https://elm-in-action.com/pasta.js"></script>
     <script src="dist/app.js"></script>
     <script>
-      Elm.PhotoGroove.init({
+      const app = Elm.PhotoGroove.init({
         node: document.getElementById("app"),
+        flags: Pasta.version,
+      });
+
+      app.ports.setFilters.subscribe((options) => {
+        // `requestAnimationFrame` is used to ensure that
+        // the Elm `view` function has already run.
+        requestAnimationFrame(() => {
+          const canvas = document.getElementById("main-canvas");
+          if (canvas === null) {
+            console.error(
+              "Failed to apply filters. The canvas element is missing."
+            );
+            return;
+          }
+          Pasta.apply(canvas, options);
+        });
+      });
+
+      Pasta.addActivityListener((activity) => {
+        app.ports.activityChanges.send(activity);
       });
     </script>
   </body>
