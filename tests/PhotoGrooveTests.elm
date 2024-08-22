@@ -4,12 +4,12 @@ import Expect
 import Fuzz
 import Json.Decode
 import Json.Encode
-import PhotoGroove
+import PhotoGroove exposing (Msg(..), initialModel, update)
 import Test exposing (Test)
 
 
-decoderTest : Test
-decoderTest =
+photoDecoderTest : Test
+photoDecoderTest =
     Test.fuzz2
         Fuzz.string
         Fuzz.int
@@ -22,4 +22,17 @@ decoderTest =
                 |> Json.Decode.decodeValue PhotoGroove.photoDecoder
                 |> Result.map (\photo -> photo.title)
                 |> Expect.equal (Ok "(untitled)")
+        )
+
+
+slidHueTest : Test
+slidHueTest =
+    Test.fuzz Fuzz.int
+        "SlidHue sets the hue"
+        (\amount ->
+            initialModel
+                |> update (SlidHue amount)
+                |> Tuple.first
+                |> (\model -> model.hue)
+                |> Expect.equal amount
         )
