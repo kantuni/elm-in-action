@@ -1,4 +1,4 @@
-port module PhotoGroove exposing (Msg(..), initialModel, main, photoDecoder, update)
+port module PhotoGroove exposing (Model, Msg(..), Photo, Status(..), initialModel, main, photoDecoder, update, urlPrefix, view)
 
 import Browser
 import Html exposing (..)
@@ -9,6 +9,16 @@ import Json.Decode
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode
 import Random
+
+
+
+-- TODO
+-- 1) Introduce a new update function that returns an `Effect`
+--    instead of `Cmd Msg`.
+-- 2) Add a `toCmd` function that maps the `Effect` to `Cmd Msg`
+-- 3) Add a mapper function that maps the new update function to
+--    the old one.
+-- 4) Add tests for all effects.
 
 
 urlPrefix : String
