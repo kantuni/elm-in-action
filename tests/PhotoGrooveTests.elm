@@ -8,6 +8,7 @@ import Json.Decode
 import Json.Encode
 import PhotoGroove exposing (Model, Msg(..), Photo, Status(..), initialModel, update, urlPrefix, view)
 import Test exposing (Test)
+import Test.Html.Event as Event
 import Test.Html.Query as Query
 import Test.Html.Selector exposing (attribute, tag)
 
@@ -17,7 +18,7 @@ photoDecoderTest =
     Test.fuzz2
         Fuzz.string
         Fuzz.int
-        "title defaults to (untitled)"
+        "Title defaults to (untitled)"
         (\url size ->
             [ ( "url", Json.Encode.string url )
             , ( "size", Json.Encode.int size )
@@ -31,7 +32,8 @@ photoDecoderTest =
 
 slidersTest : Test
 slidersTest =
-    Test.describe "Slider sets the desired field in the Model"
+    Test.describe
+        "Slider sets the desired field in the Model"
         [ sliderTest "SlidHue" SlidHue .hue
         , sliderTest "SlidRipple" SlidRipple .ripple
         , sliderTest "SlidNoise" SlidNoise .noise
@@ -40,7 +42,8 @@ slidersTest =
 
 sliderTest : String -> (Int -> Msg) -> (Model -> Int) -> Test
 sliderTest description toMsg getAmountFromModel =
-    Test.fuzz Fuzz.int
+    Test.fuzz
+        Fuzz.int
         description
         (\amount ->
             initialModel
@@ -53,7 +56,8 @@ sliderTest description toMsg getAmountFromModel =
 
 noPhotosNoThumbnailsTest : Test
 noPhotosNoThumbnailsTest =
-    Test.test "No thumbnails render when there are no photos to render."
+    Test.test
+        "No thumbnails render when there are no photos to render."
         (\_ ->
             initialModel
                 |> PhotoGroove.view
@@ -65,7 +69,8 @@ noPhotosNoThumbnailsTest =
 
 thumbnailsTest : Test
 thumbnailsTest =
-    Test.fuzz urlFuzzer
+    Test.fuzz
+        urlFuzzer
         "URLs render as thumbnails"
         (\urls ->
             let
@@ -77,6 +82,37 @@ thumbnailsTest =
                 |> PhotoGroove.view
                 |> Query.fromHtml
                 |> Expect.all thumbnailChecks
+        )
+
+
+clickThumbnailTest : Test
+clickThumbnailTest =
+    Test.fuzz3
+        urlFuzzer
+        Fuzz.string
+        urlFuzzer
+        "Clicking a thumbnail selects it"
+        (\urlsBefore urlToSelect urlsAfter ->
+            let
+                url : String
+                url =
+                    urlToSelect ++ ".jpeg"
+
+                srcToSelect : String
+                srcToSelect =
+                    urlPrefix ++ url
+
+                photos : List Photo
+                photos =
+                    (urlsBefore ++ url :: urlsAfter)
+                        |> List.map photoFromUrl
+            in
+            { initialModel | status = Loaded photos "" }
+                |> PhotoGroove.view
+                |> Query.fromHtml
+                |> Query.find [ tag "img", attribute (src srcToSelect) ]
+                |> Event.simulate Event.click
+                |> Event.expect (ClickedPhoto url)
         )
 
 
