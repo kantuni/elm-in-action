@@ -1,6 +1,9 @@
 module PhotoFolders exposing (main)
 
 -- TODO: Clicking a related photo should expand the folder path to that photo.
+-- TODO: Combine `modelPhotoDecoder` and `folderDecoder` into a single
+--       Decoder ( Folder, Dict String Photo ) that decodes both the folders
+--       and the photos in one pass.
 
 import Browser
 import Dict exposing (Dict)
@@ -10,6 +13,20 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
+
+
+
+-- MAIN
+
+
+main : Program () Model Msg
+main =
+    Browser.element
+        { init = init
+        , update = update
+        , view = view
+        , subscriptions = always Sub.none
+        }
 
 
 
@@ -81,12 +98,25 @@ type alias JsonPhoto =
     }
 
 
+photosDecoder : Decoder (Dict String Photo)
+photosDecoder =
+    Decode.keyValuePairs jsonPhotoDecoder
+        |> Decode.map fromPairs
+
+
 jsonPhotoDecoder : Decoder JsonPhoto
 jsonPhotoDecoder =
     Decode.succeed JsonPhoto
         |> required "title" Decode.string
         |> required "size" Decode.int
         |> required "related_photos" (Decode.list Decode.string)
+
+
+fromPairs : List ( String, JsonPhoto ) -> Dict String Photo
+fromPairs pairs =
+    pairs
+        |> List.map finishPhoto
+        |> Dict.fromList
 
 
 finishPhoto : ( String, JsonPhoto ) -> ( String, Photo )
@@ -98,19 +128,6 @@ finishPhoto ( url, json ) =
       , relatedUrls = json.relatedUrls
       }
     )
-
-
-fromPairs : List ( String, JsonPhoto ) -> Dict String Photo
-fromPairs pairs =
-    pairs
-        |> List.map finishPhoto
-        |> Dict.fromList
-
-
-photosDecoder : Decoder (Dict String Photo)
-photosDecoder =
-    Decode.keyValuePairs jsonPhotoDecoder
-        |> Decode.map fromPairs
 
 
 folderDecoder : Decoder Folder
@@ -161,6 +178,11 @@ modelDecoder =
 -- UPDATE
 
 
+type FolderPath
+    = End
+    | Subfolder Int FolderPath
+
+
 type Msg
     = GotInitialModel (Result Http.Error Model)
     | ClickedPhoto String
@@ -181,11 +203,6 @@ update msg model =
 
         ClickedFolder path ->
             ( { model | root = toggleExpanded path model.root }, Cmd.none )
-
-
-type FolderPath
-    = End
-    | Subfolder Int FolderPath
 
 
 toggleExpanded : FolderPath -> Folder -> Folder
@@ -281,6 +298,7 @@ viewFolder path (Folder folder) =
     if folder.expanded then
         let
             contents =
+                -- Show folders then files
                 List.append
                     (List.indexedMap viewSubfolder folder.subfolders)
                     (List.map viewPhoto folder.photoUrls)
@@ -302,17 +320,3 @@ appendIndex index path =
 
         Subfolder subfolderIndex remainingPath ->
             Subfolder subfolderIndex (appendIndex index remainingPath)
-
-
-
--- MAIN
-
-
-main : Program () Model Msg
-main =
-    Browser.element
-        { init = init
-        , update = update
-        , view = view
-        , subscriptions = always Sub.none
-        }
