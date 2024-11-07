@@ -1,14 +1,11 @@
 module PhotoFolders exposing (main)
 
 -- TODO: Clicking a related photo should expand the folder path to that photo.
--- TODO: Combine `modelPhotoDecoder` and `folderDecoder` into a single
---       Decoder ( Folder, Dict String Photo ) that decodes both the folders
---       and the photos in one pass.
 
 import Browser
 import Dict exposing (Dict)
 import Html exposing (Html, div, h1, h2, h3, img, label, span, text)
-import Html.Attributes exposing (class, src)
+import Html.Attributes exposing (alt, class, src)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder)
@@ -81,7 +78,7 @@ init _ =
     ( initialModel
     , Http.get
         { url = urlPrefix ++ "folders/list"
-        , expect = Http.expectJson GotInitialModel modelDecoder
+        , expect = Http.expectJson GotInitialModel modelDecoder2
         }
     )
 
@@ -153,6 +150,7 @@ modelPhotosDecoder : Decoder (Dict String Photo)
 modelPhotosDecoder =
     Decode.succeed modelPhotosFromJson
         |> required "photos" photosDecoder
+        -- Decode.lazy is used here to prevent a cyclic definition
         |> required "subfolders" (Decode.lazy (\_ -> Decode.list modelPhotosDecoder))
 
 
@@ -172,6 +170,59 @@ modelDecoder =
         )
         modelPhotosDecoder
         folderDecoder
+
+
+
+-- EXTRA CHALLENGE
+-- Combine `modelPhotoDecoder` and `folderDecoder` into a single
+-- Decoder ( Folder, Dict String Photo ) that decodes both the folders
+-- and the photos in one pass.
+
+
+modelDecoder2 : Decoder Model
+modelDecoder2 =
+    folderAndPhotosDecoder
+        |> Decode.map
+            (\( root, photos ) ->
+                { photos = photos
+                , root = root
+                , selectedPhotoUrl = Nothing
+                }
+            )
+
+
+folderAndPhotosDecoder : Decoder ( Folder, Dict String Photo )
+folderAndPhotosDecoder =
+    Decode.succeed folderAndPhotosFromJson
+        |> required "name" Decode.string
+        |> required "photos" photosDecoder
+        -- Decode.lazy is used here to prevent a cyclic definition
+        |> required "subfolders" (Decode.lazy (\_ -> Decode.list folderAndPhotosDecoder))
+
+
+folderAndPhotosFromJson : String -> Dict String Photo -> List ( Folder, Dict String Photo ) -> ( Folder, Dict String Photo )
+folderAndPhotosFromJson name folderPhotos subfolderAndPhotosList =
+    let
+        subfolders : List Folder
+        subfolders =
+            List.map Tuple.first subfolderAndPhotosList
+
+        subfolderPhotos : List (Dict String Photo)
+        subfolderPhotos =
+            List.map Tuple.second subfolderAndPhotosList
+
+        allPhotos : Dict String Photo
+        allPhotos =
+            List.foldl Dict.union folderPhotos subfolderPhotos
+    in
+    ( Folder
+        { name = name
+        , expanded = True
+        , photoUrls = Dict.keys folderPhotos
+        , subfolders = subfolders
+        }
+    , allPhotos
+    )
 
 
 
@@ -267,7 +318,11 @@ viewSelectedPhoto : Photo -> Html Msg
 viewSelectedPhoto photo =
     div [ class "selected-photo" ]
         [ h2 [] [ text photo.title ]
-        , img [ src (urlPrefix ++ "photos/" ++ photo.url ++ "/full") ] []
+        , img
+            [ src (urlPrefix ++ "photos/" ++ photo.url ++ "/full")
+            , alt photo.title
+            ]
+            []
         , span [] [ text (String.fromInt photo.size ++ "KB") ]
         , h3 [] [ text "Related" ]
         , div [ class "related-photos" ]
@@ -281,6 +336,7 @@ viewRelatedPhoto url =
         [ class "related-photo"
         , onClick (ClickedPhoto url)
         , src (urlPrefix ++ "photos/" ++ url ++ "/thumb")
+        , alt url
         ]
         []
 
