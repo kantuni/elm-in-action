@@ -1,7 +1,5 @@
 module PhotoFolders exposing (main)
 
--- TODO: Clicking a related photo should expand the folder path to that photo.
-
 import Browser
 import Dict exposing (Dict)
 import Html exposing (Html, div, h1, h2, h3, img, label, span, text)
@@ -237,6 +235,7 @@ type FolderPath
 type Msg
     = GotInitialModel (Result Http.Error Model)
     | ClickedPhoto String
+    | ClickedRelatedPhoto String
     | ClickedFolder FolderPath
 
 
@@ -251,6 +250,14 @@ update msg model =
 
         ClickedPhoto url ->
             ( { model | selectedPhotoUrl = Just url }, Cmd.none )
+
+        ClickedRelatedPhoto url ->
+            ( { model
+                | selectedPhotoUrl = Just url
+                , root = expandFoldersToPhoto url model.root
+              }
+            , Cmd.none
+            )
 
         ClickedFolder path ->
             ( { model | root = toggleExpanded path model.root }, Cmd.none )
@@ -277,6 +284,36 @@ toggleExpanded path (Folder folder) =
                         currentSubfolder
             in
             Folder { folder | subfolders = subfolders }
+
+
+
+-- EXTRA CHALLENGE
+-- Clicking a related photo should expand the folder path to that photo.
+
+
+expandFoldersToPhoto : String -> Folder -> Folder
+expandFoldersToPhoto url (Folder folder) =
+    if List.member url folder.photoUrls then
+        Folder { folder | expanded = True }
+
+    else
+        let
+            updatedSubfolders =
+                folder.subfolders
+                    |> List.map
+                        (\subfolder -> expandFoldersToPhoto url subfolder)
+
+            shouldExpandCurrentFolder =
+                updatedSubfolders |> List.any (\(Folder subfolder) -> subfolder.expanded)
+        in
+        Folder
+            { folder
+                | expanded =
+                    -- `folder.expanded` preserves the previous expansion state.
+                    -- Without it, all adjacent folders would be collapsed.
+                    folder.expanded || shouldExpandCurrentFolder
+                , subfolders = updatedSubfolders
+            }
 
 
 
@@ -334,7 +371,7 @@ viewRelatedPhoto : String -> Html Msg
 viewRelatedPhoto url =
     img
         [ class "related-photo"
-        , onClick (ClickedPhoto url)
+        , onClick (ClickedRelatedPhoto url)
         , src (urlPrefix ++ "photos/" ++ url ++ "/thumb")
         , alt url
         ]
