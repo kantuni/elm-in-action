@@ -40,11 +40,15 @@
     <div id="app"></div>
 
     <script src="https://elm-in-action.com/pasta.js"></script>
-    <script src="dist/app.js"></script>
+    <script src="/dist/app.js"></script>
     <script>
-      const app = Elm.PhotoFolders.init({
+      const app = Elm.Main.init({
         node: document.getElementById("app"),
       });
+
+      // const app = Elm.PhotoFolders.init({
+      //   node: document.getElementById("app"),
+      // });
 
       // const app = Elm.PhotoGroove.init({
       //   node: document.getElementById("app"),
