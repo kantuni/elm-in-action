@@ -5,6 +5,8 @@ import Browser.Navigation as Nav
 import Html exposing (Html, a, footer, h1, li, nav, text, ul)
 import Html.Attributes exposing (classList, href)
 import Html.Lazy exposing (lazy)
+import PhotoFolders as Folders
+import PhotoGallery as Gallery
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser, s)
 
@@ -13,7 +15,11 @@ import Url.Parser as Parser exposing ((</>), Parser, s)
 -- MAIN
 
 
-main : Program () Model Msg
+type alias Flags =
+    Float
+
+
+main : Program Flags Model Msg
 main =
     Browser.application
         { init = init
@@ -32,32 +38,55 @@ main =
 type alias Model =
     { key : Nav.Key
     , page : Page
+    , pastaVersion : Float
     }
 
 
 type Page
-    = Folders
-    | Gallery
-    | SelectedPhoto String
+    = FoldersPage Folders.Model
+    | GalleryPage Gallery.Model
     | NotFound
 
 
-init : () -> Url -> Nav.Key -> ( Model, Cmd Msg )
-init flags url key =
-    ( { key = key
-      , page = urlToPage url
-      }
-    , Cmd.none
-    )
+type Route
+    = Folders
+    | Gallery
+    | SelectedPhoto String
 
 
-urlToPage : Url -> Page
-urlToPage url =
-    Parser.parse parser url
-        |> Maybe.withDefault NotFound
+init : Flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
+init pastaVersion url key =
+    updateUrl url
+        { key = key
+        , page = NotFound
+        , pastaVersion = pastaVersion
+        }
 
 
-parser : Parser (Page -> a) a
+
+-- INIT HELPERS
+
+
+updateUrl : Url -> Model -> ( Model, Cmd Msg )
+updateUrl url model =
+    case Parser.parse parser url of
+        Just Folders ->
+            Folders.init Nothing
+                |> toFolders model
+
+        Just Gallery ->
+            Gallery.init model.pastaVersion
+                |> toGallery model
+
+        Just (SelectedPhoto filename) ->
+            Folders.init (Just filename)
+                |> toFolders model
+
+        Nothing ->
+            ( { model | page = NotFound }, Cmd.none )
+
+
+parser : Parser (Route -> a) a
 parser =
     Parser.oneOf
         [ Parser.map Folders Parser.top
@@ -73,6 +102,8 @@ parser =
 type Msg
     = ClickedLink Browser.UrlRequest
     | ChangedUrl Url
+    | GotFoldersMsg Folders.Msg
+    | GotGalleryMsg Gallery.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -87,7 +118,41 @@ update msg model =
                     ( model, Nav.pushUrl model.key (Url.toString url) )
 
         ChangedUrl url ->
-            ( { model | page = urlToPage url }, Cmd.none )
+            updateUrl url model
+
+        GotFoldersMsg foldersMsg ->
+            case model.page of
+                FoldersPage foldersModel ->
+                    toFolders model (Folders.update foldersMsg foldersModel)
+
+                _ ->
+                    ( model, Cmd.none )
+
+        GotGalleryMsg galleryMsg ->
+            case model.page of
+                GalleryPage galleryModel ->
+                    toGallery model (Gallery.update galleryMsg galleryModel)
+
+                _ ->
+                    ( model, Cmd.none )
+
+
+
+-- UPDATE HELPERS
+
+
+toFolders : Model -> ( Folders.Model, Cmd Folders.Msg ) -> ( Model, Cmd Msg )
+toFolders model ( foldersModel, foldersCmd ) =
+    ( { model | page = FoldersPage foldersModel }
+    , Cmd.map GotFoldersMsg foldersCmd
+    )
+
+
+toGallery : Model -> ( Gallery.Model, Cmd Gallery.Msg ) -> ( Model, Cmd Msg )
+toGallery model ( galleryModel, galleryCmd ) =
+    ( { model | page = GalleryPage galleryModel }
+    , Cmd.map GotGalleryMsg galleryCmd
+    )
 
 
 
@@ -95,8 +160,14 @@ update msg model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    Sub.none
+subscriptions model =
+    case model.page of
+        GalleryPage galleryModel ->
+            Gallery.subscriptions galleryModel
+                |> Sub.map GotGalleryMsg
+
+        _ ->
+            Sub.none
 
 
 
@@ -107,7 +178,17 @@ view : Model -> Document Msg
 view model =
     let
         content =
-            text "This isn't even my final form!"
+            case model.page of
+                FoldersPage foldersModel ->
+                    Folders.view foldersModel
+                        |> Html.map GotFoldersMsg
+
+                GalleryPage galleryModel ->
+                    Gallery.view galleryModel
+                        |> Html.map GotGalleryMsg
+
+                NotFound ->
+                    text "Not Found"
     in
     { title = "Photo Groove, SPA Style"
     , body =
@@ -130,11 +211,11 @@ viewHeader page =
                 , navLink Gallery { url = "/gallery", caption = "Gallery" }
                 ]
 
-        navLink : Page -> { url : String, caption : String } -> Html msg
-        navLink targetPage { url, caption } =
+        navLink : Route -> { url : String, caption : String } -> Html msg
+        navLink route { url, caption } =
             li
                 [ classList
-                    [ ( "active", isActive { link = targetPage, page = page } )
+                    [ ( "active", isActive { link = route, page = page } )
                     ]
                 ]
                 [ a [ href url ] [ text caption ] ]
@@ -142,19 +223,26 @@ viewHeader page =
     nav [] [ logo, links ]
 
 
-isActive : { link : Page, page : Page } -> Bool
+viewFooter : Html msg
+viewFooter =
+    footer []
+        [ text "One is never alone with a rubber duck. – Douglas Adams" ]
+
+
+
+-- VIEW HELPERS
+
+
+isActive : { link : Route, page : Page } -> Bool
 isActive { link, page } =
     case ( link, page ) of
-        ( Gallery, Gallery ) ->
+        ( Gallery, GalleryPage _ ) ->
             True
 
         ( Gallery, _ ) ->
             False
 
-        ( Folders, Folders ) ->
-            True
-
-        ( Folders, SelectedPhoto _ ) ->
+        ( Folders, FoldersPage _ ) ->
             True
 
         ( Folders, _ ) ->
@@ -162,12 +250,3 @@ isActive { link, page } =
 
         ( SelectedPhoto _, _ ) ->
             False
-
-        ( NotFound, _ ) ->
-            False
-
-
-viewFooter : Html msg
-viewFooter =
-    footer []
-        [ text "One is never alone with a rubber duck. – Douglas Adams" ]

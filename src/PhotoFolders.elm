@@ -1,27 +1,13 @@
-module PhotoFolders exposing (main)
+module PhotoFolders exposing (Model, Msg, init, update, view)
 
 import Browser
 import Dict exposing (Dict)
-import Html exposing (Html, div, h1, h2, h3, img, label, span, text)
-import Html.Attributes exposing (alt, class, src)
+import Html exposing (..)
+import Html.Attributes exposing (alt, class, href, src)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
-
-
-
--- MAIN
-
-
-main : Program () Model Msg
-main =
-    Browser.element
-        { init = init
-        , update = update
-        , view = view
-        , subscriptions = always Sub.none
-        }
 
 
 
@@ -71,14 +57,214 @@ initialModel =
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( initialModel
+init : Maybe String -> ( Model, Cmd Msg )
+init selectedFilename =
+    ( { initialModel | selectedPhotoUrl = selectedFilename }
     , Http.get
         { url = urlPrefix ++ "folders/list"
         , expect = Http.expectJson GotInitialModel modelDecoder2
         }
     )
+
+
+
+-- UPDATE
+
+
+type FolderPath
+    = End
+    | Subfolder Int FolderPath
+
+
+type Msg
+    = GotInitialModel (Result Http.Error Model)
+    | ClickedPhoto String
+    | ClickedRelatedPhoto String
+    | ClickedFolder FolderPath
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        GotInitialModel (Ok newModel) ->
+            -- Preserve the currently selected photo on refresh
+            ( { newModel | selectedPhotoUrl = model.selectedPhotoUrl }, Cmd.none )
+
+        GotInitialModel (Err _) ->
+            ( model, Cmd.none )
+
+        ClickedPhoto url ->
+            ( { model | selectedPhotoUrl = Just url }, Cmd.none )
+
+        ClickedRelatedPhoto url ->
+            ( { model
+                | selectedPhotoUrl = Just url
+                , root = expandFoldersToPhoto url model.root
+              }
+            , Cmd.none
+            )
+
+        ClickedFolder path ->
+            ( { model | root = toggleExpanded path model.root }, Cmd.none )
+
+
+
+-- UPDATE HELPERS
+
+
+toggleExpanded : FolderPath -> Folder -> Folder
+toggleExpanded path (Folder folder) =
+    case path of
+        End ->
+            Folder { folder | expanded = not folder.expanded }
+
+        Subfolder targetIndex remainingPath ->
+            let
+                subfolders : List Folder
+                subfolders =
+                    List.indexedMap transform folder.subfolders
+
+                transform : Int -> Folder -> Folder
+                transform currentIndex currentSubfolder =
+                    if currentIndex == targetIndex then
+                        toggleExpanded remainingPath currentSubfolder
+
+                    else
+                        currentSubfolder
+            in
+            Folder { folder | subfolders = subfolders }
+
+
+
+-- EXTRA CHALLENGE
+-- Clicking a related photo should expand the folder path to that photo.
+
+
+expandFoldersToPhoto : String -> Folder -> Folder
+expandFoldersToPhoto url (Folder folder) =
+    if List.member url folder.photoUrls then
+        Folder { folder | expanded = True }
+
+    else
+        let
+            updatedSubfolders =
+                folder.subfolders
+                    |> List.map (\subfolder -> expandFoldersToPhoto url subfolder)
+
+            shouldExpandCurrentFolder =
+                updatedSubfolders
+                    |> List.any (\(Folder subfolder) -> subfolder.expanded)
+        in
+        Folder
+            { folder
+                | expanded =
+                    -- `folder.expanded` preserves the previous expansion state.
+                    -- Without it, all adjacent folders would be collapsed.
+                    folder.expanded || shouldExpandCurrentFolder
+                , subfolders = updatedSubfolders
+            }
+
+
+
+-- VIEW
+
+
+view : Model -> Html Msg
+view model =
+    let
+        photoByUrl : String -> Maybe Photo
+        photoByUrl url =
+            Dict.get url model.photos
+
+        selectedPhoto : Html Msg
+        selectedPhoto =
+            case Maybe.andThen photoByUrl model.selectedPhotoUrl of
+                Just photo ->
+                    viewSelectedPhoto photo
+
+                Nothing ->
+                    text ""
+    in
+    div [ class "content" ]
+        [ div [ class "folders" ]
+            [ viewFolder End model.root
+            ]
+        , selectedPhoto
+        ]
+
+
+viewPhoto : String -> Html Msg
+viewPhoto url =
+    a [ href ("/photos/" ++ url), class "photo" ]
+        [ text url ]
+
+
+viewSelectedPhoto : Photo -> Html Msg
+viewSelectedPhoto photo =
+    div [ class "selected-photo" ]
+        [ h2 [] [ text photo.title ]
+        , img
+            [ src (urlPrefix ++ "photos/" ++ photo.url ++ "/full")
+            , alt photo.title
+            ]
+            []
+        , span [] [ text (String.fromInt photo.size ++ "KB") ]
+        , h3 [] [ text "Related" ]
+        , div [ class "related-photos" ]
+            (List.map viewRelatedPhoto photo.relatedUrls)
+        ]
+
+
+viewRelatedPhoto : String -> Html Msg
+viewRelatedPhoto url =
+    img
+        [ class "related-photo"
+        , onClick (ClickedRelatedPhoto url)
+        , src (urlPrefix ++ "photos/" ++ url ++ "/thumb")
+        , alt url
+        ]
+        []
+
+
+viewFolder : FolderPath -> Folder -> Html Msg
+viewFolder path (Folder folder) =
+    let
+        viewSubfolder : Int -> Folder -> Html Msg
+        viewSubfolder index subfolder =
+            viewFolder (appendIndex index path) subfolder
+
+        folderLabel =
+            label [ onClick (ClickedFolder path) ] [ text folder.name ]
+    in
+    if folder.expanded then
+        let
+            contents =
+                -- Show folders then files
+                List.append
+                    (List.indexedMap viewSubfolder folder.subfolders)
+                    (List.map viewPhoto folder.photoUrls)
+        in
+        div [ class "folder expanded" ]
+            [ folderLabel
+            , div [ class "contents" ] contents
+            ]
+
+    else
+        div [ class "folder collapsed" ] [ folderLabel ]
+
+
+
+-- VIEW HELPERS
+
+
+appendIndex : Int -> FolderPath -> FolderPath
+appendIndex index path =
+    case path of
+        End ->
+            Subfolder index End
+
+        Subfolder subfolderIndex remainingPath ->
+            Subfolder subfolderIndex (appendIndex index remainingPath)
 
 
 
@@ -221,195 +407,3 @@ folderAndPhotosFromJson name folderPhotos subfolderAndPhotosList =
         }
     , allPhotos
     )
-
-
-
--- UPDATE
-
-
-type FolderPath
-    = End
-    | Subfolder Int FolderPath
-
-
-type Msg
-    = GotInitialModel (Result Http.Error Model)
-    | ClickedPhoto String
-    | ClickedRelatedPhoto String
-    | ClickedFolder FolderPath
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        GotInitialModel (Ok newModel) ->
-            ( newModel, Cmd.none )
-
-        GotInitialModel (Err _) ->
-            ( model, Cmd.none )
-
-        ClickedPhoto url ->
-            ( { model | selectedPhotoUrl = Just url }, Cmd.none )
-
-        ClickedRelatedPhoto url ->
-            ( { model
-                | selectedPhotoUrl = Just url
-                , root = expandFoldersToPhoto url model.root
-              }
-            , Cmd.none
-            )
-
-        ClickedFolder path ->
-            ( { model | root = toggleExpanded path model.root }, Cmd.none )
-
-
-toggleExpanded : FolderPath -> Folder -> Folder
-toggleExpanded path (Folder folder) =
-    case path of
-        End ->
-            Folder { folder | expanded = not folder.expanded }
-
-        Subfolder targetIndex remainingPath ->
-            let
-                subfolders : List Folder
-                subfolders =
-                    List.indexedMap transform folder.subfolders
-
-                transform : Int -> Folder -> Folder
-                transform currentIndex currentSubfolder =
-                    if currentIndex == targetIndex then
-                        toggleExpanded remainingPath currentSubfolder
-
-                    else
-                        currentSubfolder
-            in
-            Folder { folder | subfolders = subfolders }
-
-
-
--- EXTRA CHALLENGE
--- Clicking a related photo should expand the folder path to that photo.
-
-
-expandFoldersToPhoto : String -> Folder -> Folder
-expandFoldersToPhoto url (Folder folder) =
-    if List.member url folder.photoUrls then
-        Folder { folder | expanded = True }
-
-    else
-        let
-            updatedSubfolders =
-                folder.subfolders
-                    |> List.map
-                        (\subfolder -> expandFoldersToPhoto url subfolder)
-
-            shouldExpandCurrentFolder =
-                updatedSubfolders |> List.any (\(Folder subfolder) -> subfolder.expanded)
-        in
-        Folder
-            { folder
-                | expanded =
-                    -- `folder.expanded` preserves the previous expansion state.
-                    -- Without it, all adjacent folders would be collapsed.
-                    folder.expanded || shouldExpandCurrentFolder
-                , subfolders = updatedSubfolders
-            }
-
-
-
--- VIEW
-
-
-view : Model -> Html Msg
-view model =
-    let
-        photoByUrl : String -> Maybe Photo
-        photoByUrl url =
-            Dict.get url model.photos
-
-        selectedPhoto : Html Msg
-        selectedPhoto =
-            case Maybe.andThen photoByUrl model.selectedPhotoUrl of
-                Just photo ->
-                    viewSelectedPhoto photo
-
-                Nothing ->
-                    text ""
-    in
-    div [ class "content" ]
-        [ div [ class "folders" ]
-            [ h1 [] [ text "Folders" ]
-            , viewFolder End model.root
-            ]
-        , selectedPhoto
-        ]
-
-
-viewPhoto : String -> Html Msg
-viewPhoto url =
-    div [ class "photo", onClick (ClickedPhoto url) ]
-        [ text url ]
-
-
-viewSelectedPhoto : Photo -> Html Msg
-viewSelectedPhoto photo =
-    div [ class "selected-photo" ]
-        [ h2 [] [ text photo.title ]
-        , img
-            [ src (urlPrefix ++ "photos/" ++ photo.url ++ "/full")
-            , alt photo.title
-            ]
-            []
-        , span [] [ text (String.fromInt photo.size ++ "KB") ]
-        , h3 [] [ text "Related" ]
-        , div [ class "related-photos" ]
-            (List.map viewRelatedPhoto photo.relatedUrls)
-        ]
-
-
-viewRelatedPhoto : String -> Html Msg
-viewRelatedPhoto url =
-    img
-        [ class "related-photo"
-        , onClick (ClickedRelatedPhoto url)
-        , src (urlPrefix ++ "photos/" ++ url ++ "/thumb")
-        , alt url
-        ]
-        []
-
-
-viewFolder : FolderPath -> Folder -> Html Msg
-viewFolder path (Folder folder) =
-    let
-        viewSubfolder : Int -> Folder -> Html Msg
-        viewSubfolder index subfolder =
-            viewFolder (appendIndex index path) subfolder
-
-        folderLabel =
-            label [ onClick (ClickedFolder path) ] [ text folder.name ]
-    in
-    if folder.expanded then
-        let
-            contents =
-                -- Show folders then files
-                List.append
-                    (List.indexedMap viewSubfolder folder.subfolders)
-                    (List.map viewPhoto folder.photoUrls)
-        in
-        div [ class "folder expanded" ]
-            [ folderLabel
-            , div [ class "contents" ] contents
-            ]
-
-    else
-        div [ class "folder collapsed" ] [ folderLabel ]
-
-
-appendIndex : Int -> FolderPath -> FolderPath
-appendIndex index path =
-    case path of
-        End ->
-            Subfolder index End
-
-        Subfolder subfolderIndex remainingPath ->
-            Subfolder subfolderIndex (appendIndex index remainingPath)

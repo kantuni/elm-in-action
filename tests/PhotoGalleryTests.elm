@@ -1,4 +1,4 @@
-module PhotoGrooveTests exposing (..)
+module PhotoGalleryTests exposing (..)
 
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer)
@@ -6,7 +6,7 @@ import Html
 import Html.Attributes exposing (src)
 import Json.Decode
 import Json.Encode
-import PhotoGroove exposing (Model, Msg(..), Photo, Status(..), initialModel, update, urlPrefix, view)
+import PhotoGallery exposing (Model, Msg(..), Photo, Status(..), initialModel, update, urlPrefix, view)
 import Test exposing (Test)
 import Test.Html.Event as Event
 import Test.Html.Query as Query
@@ -24,7 +24,7 @@ photoDecoderTest =
             , ( "size", Json.Encode.int size )
             ]
                 |> Json.Encode.object
-                |> Json.Decode.decodeValue PhotoGroove.photoDecoder
+                |> Json.Decode.decodeValue PhotoGallery.photoDecoder
                 |> Result.map (\photo -> photo.title)
                 |> Expect.equal (Ok "(untitled)")
         )
@@ -47,7 +47,7 @@ sliderTest description toMsg getAmountFromModel =
         description
         (\amount ->
             initialModel
-                |> PhotoGroove.update (toMsg amount)
+                |> PhotoGallery.update (toMsg amount)
                 |> Tuple.first
                 |> getAmountFromModel
                 |> Expect.equal amount
@@ -60,7 +60,7 @@ noPhotosNoThumbnailsTest =
         "No thumbnails render when there are no photos to render."
         (\_ ->
             initialModel
-                |> PhotoGroove.view
+                |> PhotoGallery.view
                 |> Query.fromHtml
                 |> Query.findAll [ tag "img" ]
                 |> Query.count (Expect.equal 0)
@@ -79,7 +79,7 @@ thumbnailsTest =
                     List.map thumbnailRendered urls
             in
             { initialModel | status = Loaded (List.map photoFromUrl urls) "" }
-                |> PhotoGroove.view
+                |> PhotoGallery.view
                 |> Query.fromHtml
                 |> Expect.all thumbnailChecks
         )
@@ -108,7 +108,7 @@ clickThumbnailTest =
                         |> List.map photoFromUrl
             in
             { initialModel | status = Loaded photos "" }
-                |> PhotoGroove.view
+                |> PhotoGallery.view
                 |> Query.fromHtml
                 |> Query.find [ tag "img", attribute (src srcToSelect) ]
                 |> Event.simulate Event.click
