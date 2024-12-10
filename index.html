@@ -47,33 +47,24 @@
         flags: Pasta.version,
       });
 
-      // const app = Elm.PhotoFolders.init({
-      //   node: document.getElementById("app"),
-      // });
+      app.ports.setFilters.subscribe((options) => {
+        // `requestAnimationFrame` is used to ensure that
+        // the Elm `view` function has already run.
+        requestAnimationFrame(() => {
+          const canvas = document.getElementById("main-canvas");
+          if (canvas === null) {
+            console.error(
+              "Failed to apply filters. The canvas element is missing.",
+            );
+            return;
+          }
+          Pasta.apply(canvas, options);
+        });
+      });
 
-      // const app = Elm.PhotoGroove.init({
-      //   node: document.getElementById("app"),
-      //   flags: Pasta.version,
-      // });
-
-      // app.ports.setFilters.subscribe((options) => {
-      //   // `requestAnimationFrame` is used to ensure that
-      //   // the Elm `view` function has already run.
-      //   requestAnimationFrame(() => {
-      //     const canvas = document.getElementById("main-canvas");
-      //     if (canvas === null) {
-      //       console.error(
-      //         "Failed to apply filters. The canvas element is missing."
-      //       );
-      //       return;
-      //     }
-      //     Pasta.apply(canvas, options);
-      //   });
-      // });
-
-      // Pasta.addActivityListener((activity) => {
-      //   app.ports.activityChanges.send(activity);
-      // });
+      Pasta.addActivityListener((activity) => {
+        app.ports.activityChanges.send(activity);
+      });
     </script>
   </body>
 </html>
