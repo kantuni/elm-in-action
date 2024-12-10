@@ -177,6 +177,17 @@ subscriptions model =
 view : Model -> Document Msg
 view model =
     let
+        title =
+            case model.page of
+                FoldersPage _ ->
+                    "Photo Groove"
+
+                GalleryPage _ ->
+                    "Gallery · Photo Groove"
+
+                NotFound ->
+                    "Not Found"
+
         content =
             case model.page of
                 FoldersPage foldersModel ->
@@ -190,7 +201,7 @@ view model =
                 NotFound ->
                     text "Not Found"
     in
-    { title = "Photo Groove, SPA Style"
+    { title = title
     , body =
         [ lazy viewHeader model.page
         , content
