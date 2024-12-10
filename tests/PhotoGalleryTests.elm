@@ -6,11 +6,12 @@ import Html
 import Html.Attributes exposing (src)
 import Json.Decode
 import Json.Encode
-import PhotoGallery exposing (Model, Msg(..), Photo, Status(..), initialModel, update, urlPrefix, view)
+import PhotoGallery exposing (Model, Msg(..), Photo, Status(..), initialModel, update, view)
 import Test exposing (Test)
 import Test.Html.Event as Event
 import Test.Html.Query as Query
 import Test.Html.Selector exposing (attribute, tag)
+import Utils exposing (urlPrefix)
 
 
 photoDecoderTest : Test

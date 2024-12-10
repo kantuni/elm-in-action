@@ -8,15 +8,11 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
+import Utils exposing (urlPrefix)
 
 
 
 -- INIT
-
-
-urlPrefix : String
-urlPrefix =
-    "https://elm-in-action.com/"
 
 
 type Folder

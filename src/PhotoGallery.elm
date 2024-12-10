@@ -1,4 +1,4 @@
-port module PhotoGallery exposing (Model, Msg(..), Photo, Status(..), init, initialModel, photoDecoder, subscriptions, update, urlPrefix, view)
+port module PhotoGallery exposing (Model, Msg(..), Photo, Status(..), init, initialModel, photoDecoder, subscriptions, update, view)
 
 -- TODO
 -- 1) Introduce a new update function that returns an `Effect`
@@ -17,15 +17,11 @@ import Json.Decode
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode
 import Random
+import Utils exposing (urlPrefix)
 
 
 
 -- INIT
-
-
-urlPrefix : String
-urlPrefix =
-    "https://elm-in-action.com/"
 
 
 type alias Photo =
